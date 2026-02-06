@@ -1,183 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Warehouse,
   AlertTriangle,
   Search,
   Save,
   Package,
+  Loader2,
+  Filter,
 } from "lucide-react";
+import { getInventory, updateStock } from "../../lib/api";
+import type { InventoryItem } from "../../lib/api";
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Helpers
 // ---------------------------------------------------------------------------
-
-interface InventoryRow {
-  productId: string;
-  productName: string;
-  variantId: string;
-  color: string;
-  colorHex: string;
-  edition?: string;
-  sku: string;
-  stock: number;
-  price: number;
-}
-
-const initialInventory: InventoryRow[] = [
-  {
-    productId: "1",
-    productName: "Sony WH-1000XM5",
-    variantId: "v1",
-    color: "Black",
-    colorHex: "#1A1A1A",
-    sku: "SONY-WH1000XM5-BLK",
-    stock: 25,
-    price: 34900,
-  },
-  {
-    productId: "1",
-    productName: "Sony WH-1000XM5",
-    variantId: "v2",
-    color: "Silver",
-    colorHex: "#C0C0C0",
-    sku: "SONY-WH1000XM5-SLV",
-    stock: 12,
-    price: 34900,
-  },
-  {
-    productId: "1",
-    productName: "Sony WH-1000XM5",
-    variantId: "v3",
-    color: "Midnight Blue",
-    colorHex: "#191970",
-    edition: "Limited Edition",
-    sku: "SONY-WH1000XM5-BLU-LE",
-    stock: 8,
-    price: 39900,
-  },
-  {
-    productId: "2",
-    productName: "Apple AirPods Pro 2",
-    variantId: "v4",
-    color: "White",
-    colorHex: "#FFFFFF",
-    sku: "APPLE-APP2-WHT",
-    stock: 120,
-    price: 24900,
-  },
-  {
-    productId: "3",
-    productName: "Samsung Galaxy Watch 6",
-    variantId: "v5",
-    color: "Graphite",
-    colorHex: "#383838",
-    sku: "SAM-GW6-GRP-40",
-    stock: 15,
-    price: 29900,
-  },
-  {
-    productId: "3",
-    productName: "Samsung Galaxy Watch 6",
-    variantId: "v6",
-    color: "Gold",
-    colorHex: "#FFD700",
-    sku: "SAM-GW6-GLD-40",
-    stock: 3,
-    price: 32900,
-  },
-  {
-    productId: "3",
-    productName: "Samsung Galaxy Watch 6",
-    variantId: "v7",
-    color: "Silver",
-    colorHex: "#C0C0C0",
-    sku: "SAM-GW6-SLV-44",
-    stock: 7,
-    price: 34900,
-  },
-  {
-    productId: "3",
-    productName: "Samsung Galaxy Watch 6",
-    variantId: "v8",
-    color: "Graphite",
-    colorHex: "#383838",
-    sku: "SAM-GW6-GRP-44",
-    stock: 5,
-    price: 34900,
-  },
-  {
-    productId: "4",
-    productName: "JBL Charge 5",
-    variantId: "v9",
-    color: "Black",
-    colorHex: "#000000",
-    sku: "JBL-C5-BLK",
-    stock: 45,
-    price: 17900,
-  },
-  {
-    productId: "4",
-    productName: "JBL Charge 5",
-    variantId: "v10",
-    color: "Blue",
-    colorHex: "#0000FF",
-    sku: "JBL-C5-BLU",
-    stock: 40,
-    price: 17900,
-  },
-  {
-    productId: "5",
-    productName: "Bose QuietComfort Ultra",
-    variantId: "v11",
-    color: "Black",
-    colorHex: "#1A1A1A",
-    sku: "BOSE-QCU-BLK",
-    stock: 5,
-    price: 42900,
-  },
-  {
-    productId: "5",
-    productName: "Bose QuietComfort Ultra",
-    variantId: "v12",
-    color: "White Smoke",
-    colorHex: "#F5F5F5",
-    sku: "BOSE-QCU-WHT",
-    stock: 3,
-    price: 42900,
-  },
-  {
-    productId: "6",
-    productName: "Jabra Elite 85t",
-    variantId: "v13",
-    color: "Titanium Black",
-    colorHex: "#2C2C2C",
-    sku: "JAB-E85T-TBK",
-    stock: 0,
-    price: 19900,
-  },
-  {
-    productId: "6",
-    productName: "Jabra Elite 85t",
-    variantId: "v14",
-    color: "Gold Beige",
-    colorHex: "#C8A96E",
-    sku: "JAB-E85T-GBG",
-    stock: 0,
-    price: 19900,
-  },
-  {
-    productId: "6",
-    productName: "Jabra Elite 85t",
-    variantId: "v15",
-    color: "Grey",
-    colorHex: "#808080",
-    sku: "JAB-E85T-GRY",
-    stock: 0,
-    price: 22900,
-  },
-];
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -211,15 +50,50 @@ function stockBadge(stock: number): { label: string; cls: string } {
 // ---------------------------------------------------------------------------
 
 export default function InventoryPage() {
-  const [inventory, setInventory] = useState(initialInventory);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [lowStockOnly, setLowStockOnly] = useState(false);
   const [editedStocks, setEditedStocks] = useState<
     Record<string, number | undefined>
   >({});
+  const [savingId, setSavingId] = useState<string | null>(null);
 
-  const lowStockItems = inventory.filter((item) => item.stock <= 10);
+  const { data: inventory, isLoading, error } = useQuery<InventoryItem[]>({
+    queryKey: ["inventory"],
+    queryFn: getInventory,
+  });
 
-  const filtered = inventory.filter((item) => {
+  const stockMutation = useMutation({
+    mutationFn: ({
+      productId,
+      variantId,
+      stock,
+    }: {
+      productId: string;
+      variantId: string;
+      stock: number;
+    }) => updateStock(productId, variantId, stock),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setEditedStocks((prev) => {
+        const next = { ...prev };
+        delete next[variables.variantId];
+        return next;
+      });
+      setSavingId(null);
+    },
+    onError: () => {
+      setSavingId(null);
+    },
+  });
+
+  const items = inventory ?? [];
+
+  const lowStockItems = items.filter((item) => item.stock < 5);
+
+  const filtered = items.filter((item) => {
+    if (lowStockOnly && item.stock >= 5) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -237,18 +111,14 @@ export default function InventoryPage() {
     }));
   };
 
-  const saveStock = (variantId: string) => {
-    const newStock = editedStocks[variantId];
+  const saveStock = (item: InventoryItem) => {
+    const newStock = editedStocks[item.variantId];
     if (newStock === undefined) return;
-    setInventory((prev) =>
-      prev.map((item) =>
-        item.variantId === variantId ? { ...item, stock: newStock } : item
-      )
-    );
-    setEditedStocks((prev) => {
-      const next = { ...prev };
-      delete next[variantId];
-      return next;
+    setSavingId(item.variantId);
+    stockMutation.mutate({
+      productId: item.productId,
+      variantId: item.variantId,
+      stock: newStock,
     });
   };
 
@@ -259,6 +129,7 @@ export default function InventoryPage() {
         <h1 className="text-2xl font-bold text-white">Inventory</h1>
         <p className="mt-1 text-sm text-zinc-400">
           Monitor and update stock levels for all product variants
+          {items.length > 0 ? ` (${items.length} variants)` : ""}
         </p>
       </div>
 
@@ -296,20 +167,45 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-        <input
-          type="text"
-          placeholder="Search by product, SKU, or color..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2.5 pl-10 pr-4 text-sm text-zinc-200 placeholder-zinc-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-        />
+      {/* Search & Filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search by product, SKU, or color..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2.5 pl-10 pr-4 text-sm text-zinc-200 placeholder-zinc-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setLowStockOnly(!lowStockOnly)}
+          className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${
+            lowStockOnly
+              ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
+              : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <Filter className="h-4 w-4" />
+          {lowStockOnly ? "Showing Low Stock" : "Low Stock Filter"}
+        </button>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+          Failed to load inventory: {(error as Error).message}
+        </div>
+      )}
+
       {/* Inventory Table */}
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 py-16">
           <Warehouse className="h-12 w-12 text-zinc-700" />
           <p className="mt-4 text-sm font-medium text-zinc-400">
@@ -336,6 +232,7 @@ export default function InventoryPage() {
                   const badge = stockBadge(item.stock);
                   const editedValue = editedStocks[item.variantId];
                   const hasEdit = editedValue !== undefined;
+                  const isSaving = savingId === item.variantId;
                   return (
                     <tr
                       key={item.variantId}
@@ -367,7 +264,7 @@ export default function InventoryPage() {
                           )}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-3 text-sm font-mono text-zinc-400">
+                      <td className="whitespace-nowrap px-6 py-3 font-mono text-sm text-zinc-400">
                         {item.sku}
                       </td>
                       <td className="whitespace-nowrap px-6 py-3 text-sm text-zinc-300">
@@ -392,29 +289,31 @@ export default function InventoryPage() {
                           <input
                             type="number"
                             min={0}
-                            value={
-                              hasEdit ? editedValue : item.stock
-                            }
+                            value={hasEdit ? editedValue : item.stock}
                             onChange={(e) =>
                               handleStockChange(
                                 item.variantId,
-                                e.target.value
+                                e.target.value,
                               )
                             }
                             className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                           />
                           <button
                             type="button"
-                            onClick={() => saveStock(item.variantId)}
-                            disabled={!hasEdit}
+                            onClick={() => saveStock(item)}
+                            disabled={!hasEdit || isSaving}
                             className={`rounded p-1.5 transition-colors ${
-                              hasEdit
+                              hasEdit && !isSaving
                                 ? "text-violet-400 hover:bg-violet-500/10"
                                 : "cursor-not-allowed text-zinc-700"
                             }`}
                             title="Save stock update"
                           >
-                            <Save className="h-4 w-4" />
+                            {isSaving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4" />
+                            )}
                           </button>
                         </div>
                       </td>

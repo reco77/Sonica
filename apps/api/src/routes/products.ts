@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { prisma, Prisma } from "@sonica/database";
+import { prisma, Prisma, type ProductCategory } from "@sonica/database";
 import { createProductSchema } from "@sonica/shared";
 import { requireAdmin } from "../middleware/auth";
 
@@ -354,7 +354,7 @@ export default async function productRoutes(fastify: FastifyInstance): Promise<v
           brand: data.brand,
           tagline: data.tagline,
           description: data.description,
-          category: data.category.toUpperCase() as Prisma.EnumProductCategoryFilter["equals"],
+          category: data.category.toUpperCase() as ProductCategory,
           specs: data.specs as Prisma.InputJsonValue,
           connectivity: data.connectivity as Prisma.InputJsonValue,
           batteryLife: data.batteryLife ? (data.batteryLife as Prisma.InputJsonValue) : undefined,
@@ -416,7 +416,7 @@ export default async function productRoutes(fastify: FastifyInstance): Promise<v
       if (body.tagline !== undefined) updateData.tagline = body.tagline as string;
       if (body.description !== undefined) updateData.description = body.description as string;
       if (body.category !== undefined) {
-        updateData.category = (body.category as string).toUpperCase() as Prisma.EnumProductCategoryFilter["equals"];
+        updateData.category = (body.category as string).toUpperCase() as ProductCategory;
       }
       if (body.specs !== undefined) updateData.specs = body.specs as Prisma.InputJsonValue;
       if (body.connectivity !== undefined) updateData.connectivity = body.connectivity as Prisma.InputJsonValue;
