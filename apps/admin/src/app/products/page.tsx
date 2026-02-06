@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   Plus,
@@ -9,112 +10,83 @@ import {
   Trash2,
   ChevronDown,
   Package,
+  Loader2,
 } from "lucide-react";
-import type { ProductCategory } from "@sonica/shared";
 import { PRODUCT_CATEGORIES } from "@sonica/shared";
+import { getProducts, deleteProduct } from "../../lib/api";
+import type { ApiProduct } from "../../lib/api";
 
 // ---------------------------------------------------------------------------
-// Mock data -- replace with real API calls
+// Helpers
 // ---------------------------------------------------------------------------
-
-interface MockProduct {
-  id: string;
-  name: string;
-  brand: string;
-  category: ProductCategory;
-  image: string;
-  variants: number;
-  totalStock: number;
-  priceRange: { min: number; max: number };
-  featured: boolean;
-}
-
-const mockProducts: MockProduct[] = [
-  {
-    id: "1",
-    name: "Sony WH-1000XM5",
-    brand: "Sony",
-    category: "headphones",
-    image: "/placeholder.png",
-    variants: 3,
-    totalStock: 45,
-    priceRange: { min: 34900, max: 39900 },
-    featured: true,
-  },
-  {
-    id: "2",
-    name: "Apple AirPods Pro 2",
-    brand: "Apple",
-    category: "earbuds",
-    image: "/placeholder.png",
-    variants: 1,
-    totalStock: 120,
-    priceRange: { min: 24900, max: 24900 },
-    featured: true,
-  },
-  {
-    id: "3",
-    name: "Samsung Galaxy Watch 6",
-    brand: "Samsung",
-    category: "smartwatch",
-    image: "/placeholder.png",
-    variants: 4,
-    totalStock: 30,
-    priceRange: { min: 29900, max: 44900 },
-    featured: false,
-  },
-  {
-    id: "4",
-    name: "JBL Charge 5",
-    brand: "JBL",
-    category: "speaker",
-    image: "/placeholder.png",
-    variants: 6,
-    totalStock: 85,
-    priceRange: { min: 17900, max: 17900 },
-    featured: false,
-  },
-  {
-    id: "5",
-    name: "Bose QuietComfort Ultra",
-    brand: "Bose",
-    category: "headphones",
-    image: "/placeholder.png",
-    variants: 2,
-    totalStock: 8,
-    priceRange: { min: 42900, max: 42900 },
-    featured: true,
-  },
-  {
-    id: "6",
-    name: "Jabra Elite 85t",
-    brand: "Jabra",
-    category: "earbuds",
-    image: "/placeholder.png",
-    variants: 3,
-    totalStock: 0,
-    priceRange: { min: 19900, max: 22900 },
-    featured: false,
-  },
-];
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function priceRange(variants: ApiProduct["variants"]): { min: number; max: number } {
+  if (!variants || variants.length === 0) return { min: 0, max: 0 };
+  const prices = variants.map((v) => v.price);
+  return { min: Math.min(...prices), max: Math.max(...prices) };
+}
+
+function totalStock(variants: ApiProduct["variants"]): number {
+  if (!variants) return 0;
+  return variants.reduce((sum, v) => sum + v.stock, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function ProductsPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = mockProducts.filter((p) => {
-    const matchesSearch =
-      !search ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.brand.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory =
-      categoryFilter === "all" || p.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["products", categoryFilter, page],
+    queryFn: () =>
+      getProducts({
+        category: categoryFilter !== "all" ? categoryFilter : undefined,
+        page,
+        limit: 20,
+      }),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteProduct,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setDeletingId(null);
+    },
+  });
+
+  const products = data?.data ?? [];
+  const pagination = data?.pagination;
+
+  // Client-side search filter (API doesn't have a search param for name)
+  const filtered = products.filter((p) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.brand.toLowerCase().includes(q)
+    );
+  });
+
+  const handleDelete = (id: string) => {
+    if (deletingId === id) {
+      // Second click confirms
+      deleteMutation.mutate(id);
+    } else {
+      setDeletingId(id);
+      // Auto-reset after 3 seconds
+      setTimeout(() => setDeletingId((cur) => (cur === id ? null : cur)), 3000);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -124,6 +96,7 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold text-white">Products</h1>
           <p className="mt-1 text-sm text-zinc-400">
             Manage your product catalog
+            {pagination ? ` (${pagination.total} total)` : ""}
           </p>
         </div>
         <Link
@@ -150,7 +123,10 @@ export default function ProductsPage() {
         <div className="relative">
           <select
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setPage(1);
+            }}
             className="appearance-none rounded-lg border border-zinc-700 bg-zinc-800 py-2.5 pl-4 pr-10 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
             <option value="all">All Categories</option>
@@ -164,8 +140,19 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Table */}
-      {filtered.length === 0 ? (
+      {/* Error */}
+      {error && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+          Failed to load products: {(error as Error).message}
+        </div>
+      )}
+
+      {/* Loading */}
+      {isLoading ? (
+        <div className="flex items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 py-16">
           <Package className="h-12 w-12 text-zinc-700" />
           <p className="mt-4 text-sm font-medium text-zinc-400">
@@ -192,88 +179,145 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {filtered.map((product) => (
-                  <tr
-                    key={product.id}
-                    className="transition-colors hover:bg-zinc-800/50"
-                  >
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800">
-                          <Package className="h-5 w-5 text-zinc-500" />
+                {filtered.map((product) => {
+                  const range = priceRange(product.variants);
+                  const stock = totalStock(product.variants);
+                  const heroImage = product.images?.find(
+                    (img) => img.type === "HERO",
+                  );
+                  return (
+                    <tr
+                      key={product.id}
+                      className="transition-colors hover:bg-zinc-800/50"
+                    >
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {heroImage ? (
+                            <img
+                              src={heroImage.url}
+                              alt={product.name}
+                              className="h-10 w-10 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800">
+                              <Package className="h-5 w-5 text-zinc-500" />
+                            </div>
+                          )}
+                          <span className="text-sm font-medium text-zinc-200">
+                            {product.name}
+                          </span>
                         </div>
-                        <span className="text-sm font-medium text-zinc-200">
-                          {product.name}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-zinc-400">
+                        {product.brand}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <span className="inline-flex rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-medium capitalize text-zinc-300">
+                          {product.category.toLowerCase()}
                         </span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-zinc-400">
-                      {product.brand}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="inline-flex rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-medium capitalize text-zinc-300">
-                        {product.category}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-zinc-400">
-                      {product.variants}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span
-                        className={`text-sm font-medium ${
-                          product.totalStock === 0
-                            ? "text-red-400"
-                            : product.totalStock <= 10
-                              ? "text-amber-400"
-                              : "text-emerald-400"
-                        }`}
-                      >
-                        {product.totalStock}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-zinc-300">
-                      {product.priceRange.min === product.priceRange.max
-                        ? formatPrice(product.priceRange.min)
-                        : `${formatPrice(product.priceRange.min)} - ${formatPrice(product.priceRange.max)}`}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      {product.totalStock === 0 ? (
-                        <span className="inline-flex rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-400">
-                          Out of Stock
-                        </span>
-                      ) : product.featured ? (
-                        <span className="inline-flex rounded-full bg-violet-500/10 px-2.5 py-0.5 text-xs font-medium text-violet-400">
-                          Featured
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
-                          Active
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
-                          title="Edit product"
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-zinc-400">
+                        {product.variants?.length ?? 0}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <span
+                          className={`text-sm font-medium ${
+                            stock === 0
+                              ? "text-red-400"
+                              : stock <= 10
+                                ? "text-amber-400"
+                                : "text-emerald-400"
+                          }`}
                         >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
-                          title="Delete product"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {stock}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-zinc-300">
+                        {range.min === range.max
+                          ? formatPrice(range.min)
+                          : `${formatPrice(range.min)} - ${formatPrice(range.max)}`}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        {stock === 0 ? (
+                          <span className="inline-flex rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-400">
+                            Out of Stock
+                          </span>
+                        ) : product.featured ? (
+                          <span className="inline-flex rounded-full bg-violet-500/10 px-2.5 py-0.5 text-xs font-medium text-violet-400">
+                            Featured
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+                            Active
+                          </span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/products/${product.slug}`}
+                            className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
+                            title="Edit product"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(product.id)}
+                            disabled={deleteMutation.isPending}
+                            className={`rounded-lg p-1.5 transition-colors ${
+                              deletingId === product.id
+                                ? "bg-red-500/20 text-red-400"
+                                : "text-zinc-400 hover:bg-red-500/10 hover:text-red-400"
+                            }`}
+                            title={
+                              deletingId === product.id
+                                ? "Click again to confirm"
+                                : "Delete product"
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          {deletingId === product.id && (
+                            <span className="text-xs text-red-400">
+                              Confirm?
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-zinc-800 px-6 py-3">
+              <p className="text-sm text-zinc-500">
+                Page {pagination.page} of {pagination.totalPages} ({pagination.total} products)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={pagination.page <= 1}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={pagination.page >= pagination.totalPages}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -123,46 +123,87 @@ export default async function productRoutes(fastify: FastifyInstance): Promise<v
 
     // Build orderBy clause
     let orderBy: Prisma.ProductOrderByWithRelationInput = { createdAt: "desc" };
+    const isPriceSort = query.sort === "price-asc" || query.sort === "price-desc";
 
-    switch (query.sort) {
-      case "price-asc":
-        orderBy = { variants: { _count: "asc" } };
-        break;
-      case "price-desc":
-        orderBy = { variants: { _count: "desc" } };
-        break;
-      case "newest":
-        orderBy = { releaseDate: "desc" };
-        break;
-      case "top-rated":
-        orderBy = { averageRating: "desc" };
-        break;
-      case "best-selling":
-        orderBy = { reviewCount: "desc" };
-        break;
-      case "name-asc":
-        orderBy = { name: "asc" };
-        break;
-      case "name-desc":
-        orderBy = { name: "desc" };
-        break;
-      default:
-        orderBy = { createdAt: "desc" };
+    if (!isPriceSort) {
+      switch (query.sort) {
+        case "newest":
+          orderBy = { releaseDate: "desc" };
+          break;
+        case "top-rated":
+          orderBy = { averageRating: "desc" };
+          break;
+        case "best-selling":
+          orderBy = { reviewCount: "desc" };
+          break;
+        case "name-asc":
+          orderBy = { name: "asc" };
+          break;
+        case "name-desc":
+          orderBy = { name: "desc" };
+          break;
+        default:
+          orderBy = { createdAt: "desc" };
+      }
     }
 
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
+    let products;
+    let total: number;
+
+    if (isPriceSort) {
+      // Price sorting requires ordering by minimum variant price, which Prisma
+      // does not support via orderBy on relation aggregates. We fetch matching
+      // product IDs with their variant prices, sort in application code, then
+      // load full product details for the paginated slice.
+      total = await prisma.product.count({ where });
+
+      const lightweight = await prisma.product.findMany({
         where,
-        orderBy,
-        skip,
-        take: limit,
+        select: { id: true, variants: { select: { price: true } } },
+      });
+
+      const sorted = lightweight
+        .map((p) => ({
+          id: p.id,
+          minPrice: p.variants.length > 0
+            ? Math.min(...p.variants.map((v) => v.price))
+            : 0,
+        }))
+        .sort((a, b) =>
+          query.sort === "price-asc"
+            ? a.minPrice - b.minPrice
+            : b.minPrice - a.minPrice,
+        );
+
+      const pageIds = sorted.slice(skip, skip + limit).map((p) => p.id);
+
+      const fetched = await prisma.product.findMany({
+        where: { id: { in: pageIds } },
         include: {
           variants: true,
           images: { orderBy: { sortOrder: "asc" } },
         },
-      }),
-      prisma.product.count({ where }),
-    ]);
+      });
+
+      // Preserve the sort order from the sorted IDs
+      products = pageIds
+        .map((id) => fetched.find((p) => p.id === id))
+        .filter(Boolean);
+    } else {
+      [products, total] = await Promise.all([
+        prisma.product.findMany({
+          where,
+          orderBy,
+          skip,
+          take: limit,
+          include: {
+            variants: true,
+            images: { orderBy: { sortOrder: "asc" } },
+          },
+        }),
+        prisma.product.count({ where }),
+      ]);
+    }
 
     return reply.send({
       data: products,

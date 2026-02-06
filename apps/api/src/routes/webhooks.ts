@@ -114,7 +114,6 @@ async function handlePaymentFailed(
       notes: { contains: paymentIntentId },
       status: "PENDING",
     },
-    select: { id: true },
     include: { items: true },
   });
 
@@ -128,16 +127,8 @@ async function handlePaymentFailed(
 
   // Restore stock and cancel order in a transaction
   await prisma.$transaction(async (tx) => {
-    // Type the order items properly
-    const fullOrder = await tx.order.findUnique({
-      where: { id: order.id },
-      include: { items: true },
-    });
-
-    if (!fullOrder) return;
-
     // Restore stock for each variant
-    for (const item of fullOrder.items) {
+    for (const item of order.items) {
       await tx.productVariant.update({
         where: { id: item.variantId },
         data: { stock: { increment: item.quantity } },

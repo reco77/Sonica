@@ -22,13 +22,13 @@ export async function configureProductsIndex(): Promise<void> {
     "brand",
     "price",
     "compatibility",
+    "connectivity",
     "featured",
     "active",
     "averageRating",
-    "connectivity.bluetoothVersion",
-    "connectivity.wifi",
-    "connectivity.usbC",
-    "connectivity.auxJack",
+    "hasNoiseCancellation",
+    "hasWirelessCharging",
+    "isWaterResistant",
   ]);
 
   await index.updateSortableAttributes([

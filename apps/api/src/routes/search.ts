@@ -13,6 +13,7 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
       priceMin?: string;
       priceMax?: string;
       compatibility?: string;
+      features?: string;
       sort?: string;
       page?: string;
       limit?: string;
@@ -49,6 +50,23 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
         .split(",")
         .map((c) => `compatibility = "${c.trim()}"`);
       filters.push(`(${compatibilities.join(" OR ")})`);
+    }
+
+    if (query.features) {
+      const features = query.features.split(",").map((f) => f.trim());
+      for (const feature of features) {
+        switch (feature) {
+          case "noise-cancellation":
+            filters.push("hasNoiseCancellation = true");
+            break;
+          case "wireless-charging":
+            filters.push("hasWirelessCharging = true");
+            break;
+          case "water-resistant":
+            filters.push("isWaterResistant = true");
+            break;
+        }
+      }
     }
 
     // Build sort options for Meilisearch
@@ -128,6 +146,10 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
             ? Math.max(...product.variants.map((v) => v.price))
             : 0;
 
+          // Extract feature booleans from JSON specs/batteryLife for Meilisearch filtering
+          const specs = product.specs as Record<string, unknown> | null;
+          const battery = product.batteryLife as Record<string, unknown> | null;
+
           return {
             id: product.id,
             name: product.name,
@@ -150,6 +172,22 @@ export default async function searchRoutes(fastify: FastifyInstance): Promise<vo
             image: product.images[0]?.url || null,
             variantCount: product.variants.length,
             inStock: product.variants.some((v) => v.stock > 0),
+            // Feature booleans for search filtering
+            hasNoiseCancellation:
+              specs !== null &&
+              typeof specs === "object" &&
+              "noiseCancellation" in specs &&
+              specs.noiseCancellation === true,
+            hasWirelessCharging:
+              battery !== null &&
+              typeof battery === "object" &&
+              "wirelessCharging" in battery &&
+              battery.wirelessCharging === true,
+            isWaterResistant:
+              specs !== null &&
+              typeof specs === "object" &&
+              "waterRating" in specs &&
+              specs.waterRating != null,
           };
         });
 
