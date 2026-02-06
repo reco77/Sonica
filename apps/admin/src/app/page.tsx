@@ -1,3 +1,6 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
 import {
   DollarSign,
   ShoppingCart,
@@ -6,132 +9,22 @@ import {
   Plus,
   Download,
   ArrowUpRight,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import { getStats, getOrders } from "../lib/api";
+import type { DashboardStats, ApiOrder } from "../lib/api";
 
 // ---------------------------------------------------------------------------
-// Mock data -- replace with real API calls
+// Helpers
 // ---------------------------------------------------------------------------
-
-const stats = [
-  {
-    label: "Total Revenue",
-    value: "$48,290.00",
-    change: "+12.5%",
-    icon: DollarSign,
-    color: "bg-emerald-500/10 text-emerald-400",
-    iconBg: "bg-emerald-500/20",
-  },
-  {
-    label: "Orders Today",
-    value: "24",
-    change: "+3",
-    icon: ShoppingCart,
-    color: "bg-blue-500/10 text-blue-400",
-    iconBg: "bg-blue-500/20",
-  },
-  {
-    label: "Active Products",
-    value: "156",
-    change: "+8",
-    icon: Package,
-    color: "bg-violet-500/10 text-violet-400",
-    iconBg: "bg-violet-500/20",
-  },
-  {
-    label: "Low Stock Items",
-    value: "7",
-    change: "-2",
-    icon: AlertTriangle,
-    color: "bg-amber-500/10 text-amber-400",
-    iconBg: "bg-amber-500/20",
-  },
-];
-
-const recentOrders = [
-  {
-    id: "ORD-001",
-    customer: "Alex Johnson",
-    date: "2025-01-15",
-    items: 3,
-    total: 45900,
-    status: "delivered" as const,
-  },
-  {
-    id: "ORD-002",
-    customer: "Maria Garcia",
-    date: "2025-01-15",
-    items: 1,
-    total: 29900,
-    status: "shipped" as const,
-  },
-  {
-    id: "ORD-003",
-    customer: "James Wilson",
-    date: "2025-01-14",
-    items: 2,
-    total: 67800,
-    status: "confirmed" as const,
-  },
-  {
-    id: "ORD-004",
-    customer: "Sarah Chen",
-    date: "2025-01-14",
-    items: 1,
-    total: 19900,
-    status: "pending" as const,
-  },
-  {
-    id: "ORD-005",
-    customer: "Daniel Kim",
-    date: "2025-01-14",
-    items: 4,
-    total: 112500,
-    status: "delivered" as const,
-  },
-  {
-    id: "ORD-006",
-    customer: "Emily Brown",
-    date: "2025-01-13",
-    items: 2,
-    total: 54900,
-    status: "shipped" as const,
-  },
-  {
-    id: "ORD-007",
-    customer: "Michael Lee",
-    date: "2025-01-13",
-    items: 1,
-    total: 34900,
-    status: "confirmed" as const,
-  },
-  {
-    id: "ORD-008",
-    customer: "Lisa Wang",
-    date: "2025-01-13",
-    items: 3,
-    total: 89700,
-    status: "pending" as const,
-  },
-  {
-    id: "ORD-009",
-    customer: "Robert Taylor",
-    date: "2025-01-12",
-    items: 1,
-    total: 24900,
-    status: "delivered" as const,
-  },
-  {
-    id: "ORD-010",
-    customer: "Anna Martinez",
-    date: "2025-01-12",
-    items: 2,
-    total: 41800,
-    status: "shipped" as const,
-  },
-];
 
 const statusColors: Record<string, string> = {
+  PENDING: "bg-yellow-500/10 text-yellow-400",
+  CONFIRMED: "bg-blue-500/10 text-blue-400",
+  SHIPPED: "bg-violet-500/10 text-violet-400",
+  DELIVERED: "bg-emerald-500/10 text-emerald-400",
+  CANCELLED: "bg-red-500/10 text-red-400",
   pending: "bg-yellow-500/10 text-yellow-400",
   confirmed: "bg-blue-500/10 text-blue-400",
   shipped: "bg-violet-500/10 text-violet-400",
@@ -143,7 +36,70 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function DashboardPage() {
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    error: statsError,
+  } = useQuery<DashboardStats>({
+    queryKey: ["dashboard-stats"],
+    queryFn: getStats,
+  });
+
+  const {
+    data: ordersRes,
+    isLoading: ordersLoading,
+    error: ordersError,
+  } = useQuery({
+    queryKey: ["recent-orders"],
+    queryFn: () => getOrders({ limit: 10 }),
+  });
+
+  const recentOrders: ApiOrder[] = ordersRes?.data ?? [];
+
+  const statCards = [
+    {
+      label: "Total Revenue",
+      value: stats ? formatPrice(stats.totalRevenue) : "--",
+      icon: DollarSign,
+      color: "bg-emerald-500/10 text-emerald-400",
+      iconBg: "bg-emerald-500/20",
+    },
+    {
+      label: "Total Orders",
+      value: stats ? String(stats.totalOrders) : "--",
+      icon: ShoppingCart,
+      color: "bg-blue-500/10 text-blue-400",
+      iconBg: "bg-blue-500/20",
+    },
+    {
+      label: "Active Products",
+      value: stats ? String(stats.activeProducts) : "--",
+      icon: Package,
+      color: "bg-violet-500/10 text-violet-400",
+      iconBg: "bg-violet-500/20",
+    },
+    {
+      label: "Low Stock Items",
+      value: stats ? String(stats.lowStockItems) : "--",
+      icon: AlertTriangle,
+      color: "bg-amber-500/10 text-amber-400",
+      iconBg: "bg-amber-500/20",
+    },
+  ];
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -155,8 +111,13 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
+      {statsError && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+          Failed to load stats: {(statsError as Error).message}
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => {
+        {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
             <div
@@ -174,18 +135,13 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="mt-3 flex items-end gap-2">
-                <span className="text-2xl font-bold text-white">
-                  {stat.value}
-                </span>
-                <span
-                  className={`text-xs font-medium ${
-                    stat.change.startsWith("+")
-                      ? "text-emerald-400"
-                      : "text-red-400"
-                  }`}
-                >
-                  {stat.change}
-                </span>
+                {statsLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+                ) : (
+                  <span className="text-2xl font-bold text-white">
+                    {stat.value}
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -216,7 +172,9 @@ export default function DashboardPage() {
           </div>
           <div>
             <p className="text-sm font-medium text-white">View Low Stock</p>
-            <p className="text-xs text-zinc-500">7 items need attention</p>
+            <p className="text-xs text-zinc-500">
+              {stats ? `${stats.lowStockItems} items need attention` : "Loading..."}
+            </p>
           </div>
           <ArrowUpRight className="ml-auto h-4 w-4 text-zinc-600" />
         </Link>
@@ -246,51 +204,62 @@ export default function DashboardPage() {
             View all
           </Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
-                <th className="px-6 py-3">Order</th>
-                <th className="px-6 py-3">Customer</th>
-                <th className="px-6 py-3">Date</th>
-                <th className="px-6 py-3">Items</th>
-                <th className="px-6 py-3">Total</th>
-                <th className="px-6 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {recentOrders.map((order) => (
-                <tr
-                  key={order.id}
-                  className="transition-colors hover:bg-zinc-800/50"
-                >
-                  <td className="whitespace-nowrap px-6 py-3 text-sm font-medium text-violet-400">
-                    {order.id}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-3 text-sm text-zinc-300">
-                    {order.customer}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-3 text-sm text-zinc-400">
-                    {order.date}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-3 text-sm text-zinc-400">
-                    {order.items}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-3 text-sm font-medium text-zinc-200">
-                    {formatPrice(order.total)}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusColors[order.status]}`}
-                    >
-                      {order.status}
-                    </span>
-                  </td>
+        {ordersError && (
+          <div className="px-6 py-4 text-sm text-red-400">
+            Failed to load orders: {(ordersError as Error).message}
+          </div>
+        )}
+        {ordersLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+          </div>
+        ) : recentOrders.length === 0 ? (
+          <div className="px-6 py-12 text-center text-sm text-zinc-500">
+            No orders found
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  <th className="px-6 py-3">Order</th>
+                  <th className="px-6 py-3">Date</th>
+                  <th className="px-6 py-3">Items</th>
+                  <th className="px-6 py-3">Total</th>
+                  <th className="px-6 py-3">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {recentOrders.map((order) => (
+                  <tr
+                    key={order.id}
+                    className="transition-colors hover:bg-zinc-800/50"
+                  >
+                    <td className="whitespace-nowrap px-6 py-3 text-sm font-medium text-violet-400">
+                      {order.orderNumber}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-3 text-sm text-zinc-400">
+                      {formatDate(order.createdAt)}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-3 text-sm text-zinc-400">
+                      {order.items?.length ?? 0}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-3 text-sm font-medium text-zinc-200">
+                      {formatPrice(order.total)}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusColors[order.status] ?? "bg-zinc-800 text-zinc-400"}`}
+                      >
+                        {order.status.toLowerCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
