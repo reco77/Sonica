@@ -1,0 +1,70 @@
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/javascript-node:22
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    network_mode: service:postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://sonica:sonica@localhost:5432/sonica?schema=public"
+      REDIS_URL: "redis://redis:6379"
+      MEILISEARCH_HOST: "http://meilisearch:7700"
+      MEILISEARCH_API_KEY: "sonica_dev_key"
+      NEXTAUTH_SECRET: "codespace-dev-secret"
+      NEXTAUTH_URL: "http://localhost:3000"
+      STRIPE_SECRET_KEY: "sk_test_placeholder"
+      STRIPE_PUBLISHABLE_KEY: "pk_test_placeholder"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sonica
+      POSTGRES_PASSWORD: sonica
+      POSTGRES_DB: sonica
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonica"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    network_mode: service:postgres
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    restart: unless-stopped
+    network_mode: service:postgres
+    environment:
+      MEILI_MASTER_KEY: sonica_dev_key
+      MEILI_ENV: development
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  meilisearch_data:
