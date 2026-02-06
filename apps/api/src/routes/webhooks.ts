@@ -10,10 +10,7 @@ export default async function webhookRoutes(fastify: FastifyInstance): Promise<v
   fastify.post(
     "/api/webhooks/stripe",
     {
-      config: {
-        // Raw body is needed for Stripe signature verification
-        rawBody: true,
-      },
+      // Raw body is provided by the custom content type parser in server.ts
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const sig = request.headers["stripe-signature"] as string | undefined;

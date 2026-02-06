@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -8,14 +10,15 @@ import {
   Trash2,
   Upload,
   Save,
+  Loader2,
 } from "lucide-react";
 import type { ProductCategory } from "@sonica/shared";
 import {
   PRODUCT_CATEGORIES,
-  CONNECTIVITY_OPTIONS,
   COMPATIBILITY_OPTIONS,
   BRANDS,
 } from "@sonica/shared";
+import { createProduct } from "../../../lib/api";
 
 // ---------------------------------------------------------------------------
 // Types for form state
@@ -57,6 +60,8 @@ function slugify(text: string): string {
 // ---------------------------------------------------------------------------
 
 export default function NewProductPage() {
+  const router = useRouter();
+
   // Basic info
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -68,7 +73,7 @@ export default function NewProductPage() {
   const [featured, setFeatured] = useState(false);
   const [releaseDate, setReleaseDate] = useState("");
 
-  // Specs
+  // Headphone specs
   const [driverSize, setDriverSize] = useState("");
   const [freqMin, setFreqMin] = useState("");
   const [freqMax, setFreqMax] = useState("");
@@ -90,7 +95,7 @@ export default function NewProductPage() {
   // Earbuds specs
   const [earbudsDriverSize, setEarbudsDriverSize] = useState("");
   const [ancLevel, setAncLevel] = useState<"none" | "basic" | "advanced">(
-    "none"
+    "none",
   );
   const [transparencyMode, setTransparencyMode] = useState(false);
   const [stemDesign, setStemDesign] = useState<"stem" | "stemless">("stem");
@@ -118,12 +123,25 @@ export default function NewProductPage() {
   // Variants
   const [variants, setVariants] = useState<VariantForm[]>([emptyVariant()]);
 
+  // Error state
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: createProduct,
+    onSuccess: () => {
+      router.push("/products");
+    },
+    onError: (err: Error) => {
+      setFormError(err.message);
+    },
+  });
+
   const handleNameChange = useCallback(
     (val: string) => {
       setName(val);
       if (autoSlug) setSlug(slugify(val));
     },
-    [autoSlug]
+    [autoSlug],
   );
 
   const addVariant = () => setVariants((prev) => [...prev, emptyVariant()]);
@@ -131,21 +149,128 @@ export default function NewProductPage() {
   const removeVariant = (key: string) =>
     setVariants((prev) => prev.filter((v) => v.key !== key));
 
-  const updateVariant = (key: string, field: keyof VariantForm, value: string) =>
+  const updateVariant = (
+    key: string,
+    field: keyof VariantForm,
+    value: string,
+  ) =>
     setVariants((prev) =>
-      prev.map((v) => (v.key === key ? { ...v, [field]: value } : v))
+      prev.map((v) => (v.key === key ? { ...v, [field]: value } : v)),
     );
 
   const toggleCompatibility = (opt: string) => {
     setCompatibility((prev) =>
-      prev.includes(opt) ? prev.filter((c) => c !== opt) : [...prev, opt]
+      prev.includes(opt) ? prev.filter((c) => c !== opt) : [...prev, opt],
     );
   };
 
+  // Build specs object based on category
+  function buildSpecs(): Record<string, unknown> {
+    switch (category) {
+      case "headphones":
+        return {
+          driverSize: Number(driverSize) || 40,
+          frequencyRange: {
+            min: Number(freqMin) || 20,
+            max: Number(freqMax) || 20000,
+          },
+          impedance: Number(impedance) || 32,
+          sensitivity: Number(sensitivity) || 100,
+          noiseCancellation,
+          codecs: codecs
+            ? codecs.split(",").map((c) => c.trim()).filter(Boolean)
+            : ["SBC"],
+          ...(cableLength ? { cableLength: Number(cableLength) } : {}),
+        };
+      case "smartwatch":
+        return {
+          displaySize: Number(displaySize) || 1.4,
+          displayType: displayType || "AMOLED",
+          os: os || "Wear OS",
+          sensors: sensors
+            ? sensors.split(",").map((s) => s.trim()).filter(Boolean)
+            : ["Heart Rate"],
+          gps,
+          waterRating: waterRating || "5ATM",
+          strapWidth: Number(strapWidth) || 20,
+        };
+      case "earbuds":
+        return {
+          driverSize: Number(earbudsDriverSize) || 11,
+          ancLevel,
+          transparencyMode,
+          stemDesign,
+        };
+      case "speaker":
+        return {
+          wattage: Number(wattage) || 20,
+          driverCount: Number(driverCount) || 1,
+          batteryLife: Number(speakerBatteryLife) || 10,
+          waterRating: speakerWaterRating || "IPX4",
+        };
+      default:
+        return {};
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: validate & submit via API
-    alert("Product saved (placeholder)");
+    setFormError(null);
+
+    if (!category) {
+      setFormError("Please select a category");
+      return;
+    }
+
+    if (variants.length === 0) {
+      setFormError("Please add at least one variant");
+      return;
+    }
+
+    const payload = {
+      name,
+      slug,
+      brand,
+      tagline,
+      description,
+      category,
+      specs: buildSpecs(),
+      connectivity: {
+        ...(bluetoothVersion ? { bluetoothVersion } : {}),
+        wifi,
+        usbC,
+        auxJack,
+      },
+      ...(batteryHours
+        ? {
+            batteryLife: {
+              hours: Number(batteryHours),
+              chargingTimeMinutes: Number(chargingTime) || 120,
+              wirelessCharging,
+            },
+          }
+        : {}),
+      compatibility,
+      variants: variants.map((v) => ({
+        id: v.key,
+        color: v.color || "Default",
+        colorHex: v.colorHex || "#000000",
+        ...(v.edition ? { edition: v.edition } : {}),
+        sku: v.sku || `${slug}-${v.key.slice(0, 6)}`.toUpperCase(),
+        price: Math.round(Number(v.price) * 100) || 0,
+        ...(v.compareAtPrice
+          ? { compareAtPrice: Math.round(Number(v.compareAtPrice) * 100) }
+          : {}),
+        stock: Number(v.stock) || 0,
+      })),
+      images: ["https://placehold.co/600x600/1a1a2e/e0e0e0?text=Product"],
+      releaseDate: releaseDate
+        ? new Date(releaseDate).toISOString()
+        : new Date().toISOString(),
+      featured,
+    };
+
+    mutation.mutate(payload);
   };
 
   // Shared input styles
@@ -173,12 +298,24 @@ export default function NewProductPage() {
         </div>
         <button
           type="submit"
-          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-700"
+          disabled={mutation.isPending}
+          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
         >
-          <Save className="h-4 w-4" />
-          Save Product
+          {mutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {mutation.isPending ? "Saving..." : "Save Product"}
         </button>
       </div>
+
+      {/* Error banner */}
+      {formError && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+          {formError}
+        </div>
+      )}
 
       {/* Basic Info */}
       <div className={sectionCls}>
@@ -567,7 +704,7 @@ export default function NewProductPage() {
                 value={ancLevel}
                 onChange={(e) =>
                   setAncLevel(
-                    e.target.value as "none" | "basic" | "advanced"
+                    e.target.value as "none" | "basic" | "advanced",
                   )
                 }
                 className={inputCls}
@@ -950,10 +1087,15 @@ export default function NewProductPage() {
         </Link>
         <button
           type="submit"
-          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-700"
+          disabled={mutation.isPending}
+          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
         >
-          <Save className="h-4 w-4" />
-          Save Product
+          {mutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {mutation.isPending ? "Saving..." : "Save Product"}
         </button>
       </div>
     </form>

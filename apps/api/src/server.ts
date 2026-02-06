@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -55,7 +55,7 @@ async function buildServer() {
     (req, body, done) => {
       try {
         // Attach raw body for webhook verification
-        (req as Record<string, unknown>).rawBody = body;
+        (req as unknown as Record<string, unknown>).rawBody = body;
         const json = JSON.parse(body.toString());
         done(null, json);
       } catch (err) {
@@ -87,7 +87,7 @@ async function buildServer() {
 
   // ─── Global Error Handler ─────────────────────────────────────────────
 
-  fastify.setErrorHandler((error, request, reply) => {
+  fastify.setErrorHandler((error: FastifyError, request, reply) => {
     fastify.log.error(error);
 
     // Fastify rate limit error
