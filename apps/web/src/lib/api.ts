@@ -120,6 +120,29 @@ export interface Order {
   createdAt: string;
 }
 
+// Review types
+export interface Review {
+  id: string;
+  author: string;
+  rating: number;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface ReviewSubmission {
+  author: string;
+  rating: number;
+  title: string;
+  body: string;
+}
+
+// Comparison types
+export interface ComparisonResponse {
+  token: string;
+  products: Product[];
+}
+
 // API functions
 export const api = {
   products: {
@@ -134,9 +157,9 @@ export const api = {
         next: { revalidate: 60 },
       }),
 
-    search: (query: string) =>
-      fetchApi<ProductsResponse>("/products/search", {
-        params: { q: query },
+    search: (query: string, filters?: Omit<ProductFilters, "search">) =>
+      fetchApi<ProductsResponse>("/search", {
+        params: { q: query, ...(filters as Record<string, string>) },
       }),
 
     getFeatured: () =>
@@ -148,32 +171,51 @@ export const api = {
   cart: {
     get: () => fetchApi<CartResponse>("/cart"),
 
-    addItem: (productId: string, variantId?: string, quantity = 1) =>
-      fetchApi<CartResponse>("/cart/items", {
+    addItem: (variantId: string, quantity = 1) =>
+      fetchApi<CartResponse>("/cart", {
         method: "POST",
-        body: JSON.stringify({ productId, variantId, quantity }),
+        body: JSON.stringify({ variantId, quantity }),
       }),
 
     updateItem: (itemId: string, quantity: number) =>
-      fetchApi<CartResponse>(`/cart/items/${itemId}`, {
-        method: "PATCH",
+      fetchApi<CartResponse>(`/cart/${itemId}`, {
+        method: "PUT",
         body: JSON.stringify({ quantity }),
       }),
 
     removeItem: (itemId: string) =>
-      fetchApi<CartResponse>(`/cart/items/${itemId}`, {
+      fetchApi<CartResponse>(`/cart/${itemId}`, {
         method: "DELETE",
       }),
   },
 
   orders: {
-    create: (cartId: string) =>
+    create: (cartId?: string) =>
       fetchApi<Order>("/orders", {
         method: "POST",
-        body: JSON.stringify({ cartId }),
+        body: JSON.stringify(cartId ? { cartId } : {}),
       }),
 
     get: (id: string) => fetchApi<Order>(`/orders/${id}`),
+  },
+
+  compare: {
+    create: (productIds: string[]) =>
+      fetchApi<ComparisonResponse>("/compare", {
+        method: "POST",
+        body: JSON.stringify({ productIds }),
+      }),
+
+    get: (token: string) =>
+      fetchApi<ComparisonResponse>(`/compare/${token}`),
+  },
+
+  reviews: {
+    submit: (slug: string, data: ReviewSubmission) =>
+      fetchApi<Review>(`/products/${slug}/reviews`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 
   checkout: {
@@ -184,3 +226,40 @@ export const api = {
       }),
   },
 };
+
+// Standalone convenience functions
+export const getProducts = (params?: ProductFilters) =>
+  api.products.list(params);
+
+export const getFeaturedProducts = () =>
+  api.products.getFeatured();
+
+export const getProduct = (slug: string) =>
+  api.products.getBySlug(slug);
+
+export const searchProducts = (query: string, filters?: Omit<ProductFilters, "search">) =>
+  api.products.search(query, filters);
+
+export const addToCart = (variantId: string, quantity = 1) =>
+  api.cart.addItem(variantId, quantity);
+
+export const getCart = () =>
+  api.cart.get();
+
+export const updateCartItem = (itemId: string, quantity: number) =>
+  api.cart.updateItem(itemId, quantity);
+
+export const removeCartItem = (itemId: string) =>
+  api.cart.removeItem(itemId);
+
+export const createOrder = (cartId?: string) =>
+  api.orders.create(cartId);
+
+export const createComparison = (productIds: string[]) =>
+  api.compare.create(productIds);
+
+export const getComparison = (token: string) =>
+  api.compare.get(token);
+
+export const submitReview = (slug: string, data: ReviewSubmission) =>
+  api.reviews.submit(slug, data);

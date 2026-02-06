@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ShoppingCart,
   Search,
@@ -14,8 +15,10 @@ import {
   Ear,
   User,
   Zap,
+  GitCompareArrows,
 } from "lucide-react";
 import { useCartStore, useCartItemCount } from "@/store/cart";
+import { useComparisonStore } from "@/store/comparison";
 
 const categories = [
   { name: "Headphones", href: "/products?category=headphones", icon: Headphones },
@@ -29,8 +32,18 @@ export function Header() {
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const router = useRouter();
   const openCart = useCartStore((s) => s.openCart);
   const itemCount = useCartItemCount();
+  const comparisonProducts = useComparisonStore((s) => s.products);
+  const comparisonCount = comparisonProducts.length;
+
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && searchQuery.trim()) {
+      router.push(`/products?q=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchOpen(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--sonica-border)] bg-[var(--sonica-bg)]/80 backdrop-blur-xl">
@@ -94,6 +107,7 @@ export function Header() {
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearch}
                 className="w-full rounded-lg border border-[var(--sonica-border)] bg-[var(--sonica-surface)] py-2 pl-10 pr-4 text-sm text-[var(--sonica-text)] placeholder:text-[var(--sonica-text-muted)] focus:border-[var(--sonica-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--sonica-primary)] transition-colors"
               />
             </div>
@@ -113,6 +127,19 @@ export function Header() {
             <button className="p-2 text-[var(--sonica-text-muted)] hover:text-[var(--sonica-text)] transition-colors rounded-lg hover:bg-[var(--sonica-surface)]">
               <User className="h-5 w-5" />
             </button>
+
+            {/* Compare */}
+            <Link
+              href="/compare"
+              className="relative p-2 text-[var(--sonica-text-muted)] hover:text-[var(--sonica-text)] transition-colors rounded-lg hover:bg-[var(--sonica-surface)]"
+            >
+              <GitCompareArrows className="h-5 w-5" />
+              {comparisonCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--sonica-accent)] text-[10px] font-bold text-white">
+                  {comparisonCount}
+                </span>
+              )}
+            </Link>
 
             {/* Cart */}
             <button
@@ -151,6 +178,7 @@ export function Header() {
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearch}
                 autoFocus
                 className="w-full rounded-lg border border-[var(--sonica-border)] bg-[var(--sonica-surface)] py-2 pl-10 pr-4 text-sm text-[var(--sonica-text)] placeholder:text-[var(--sonica-text-muted)] focus:border-[var(--sonica-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--sonica-primary)]"
               />

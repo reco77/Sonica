@@ -21,7 +21,7 @@ export function CartView() {
   const itemCount = useCartItemCount();
 
   const shipping = subtotal >= 99 ? 0 : 9.99;
-  const tax = subtotal * 0.08;
+  const tax = subtotal * 0.085;
   const total = subtotal + shipping + tax;
 
   if (items.length === 0) {

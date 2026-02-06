@@ -8,7 +8,6 @@ import {
   Star,
   ShoppingCart,
   Heart,
-  Share2,
   Check,
   Truck,
   Shield,
@@ -17,9 +16,11 @@ import {
   Minus,
   Plus,
   Package,
+  GitCompareArrows,
 } from "lucide-react";
 import { api, type Product, type ProductVariant } from "@/lib/api";
 import { useCartStore } from "@/store/cart";
+import { useComparisonStore, type ComparisonProduct } from "@/store/comparison";
 import { VariantPicker } from "@/components/products/VariantPicker";
 
 // Placeholder product for demo
@@ -74,6 +75,7 @@ export function ProductDetail({ slug }: ProductDetailProps) {
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const addItem = useCartStore((s) => s.addItem);
+  const { toggleProduct, isInComparison } = useComparisonStore();
 
   const { data: product, isError } = useQuery({
     queryKey: ["product", slug],
@@ -83,6 +85,8 @@ export function ProductDetail({ slug }: ProductDetailProps) {
 
   const p = isError || !product ? placeholderProduct : product;
   const currentVariant = selectedVariant || p.variants[0] || null;
+
+  const inComparison = isInComparison(p.id);
 
   const handleAddToCart = () => {
     addItem({
@@ -96,6 +100,20 @@ export function ProductDetail({ slug }: ProductDetailProps) {
       variant: currentVariant?.id,
       color: currentVariant?.name,
     });
+  };
+
+  const handleToggleCompare = () => {
+    const compProduct: ComparisonProduct = {
+      id: p.id,
+      name: p.name,
+      brand: p.brand,
+      price: p.price,
+      image: p.images[0] || "",
+      slug: p.slug,
+      category: p.category,
+      specs: p.specs,
+    };
+    toggleProduct(compProduct);
   };
 
   const discount = p.compareAtPrice
@@ -265,11 +283,19 @@ export function ProductDetail({ slug }: ProductDetailProps) {
               <ShoppingCart className="h-4 w-4" />
               {p.inStock ? "Add to Cart" : "Out of Stock"}
             </button>
+            <button
+              onClick={handleToggleCompare}
+              className={`p-3 rounded-xl border transition-colors ${
+                inComparison
+                  ? "border-[var(--sonica-primary)] bg-[var(--sonica-primary)]/10 text-[var(--sonica-primary)]"
+                  : "border-[var(--sonica-border)] text-[var(--sonica-text-muted)] hover:text-[var(--sonica-primary)] hover:border-[var(--sonica-primary)]/30"
+              }`}
+              title={inComparison ? "Remove from comparison" : "Add to comparison"}
+            >
+              {inComparison ? <Check className="h-5 w-5" /> : <GitCompareArrows className="h-5 w-5" />}
+            </button>
             <button className="p-3 rounded-xl border border-[var(--sonica-border)] text-[var(--sonica-text-muted)] hover:text-red-400 hover:border-red-400/30 transition-colors">
               <Heart className="h-5 w-5" />
-            </button>
-            <button className="p-3 rounded-xl border border-[var(--sonica-border)] text-[var(--sonica-text-muted)] hover:text-[var(--sonica-text)] transition-colors">
-              <Share2 className="h-5 w-5" />
             </button>
           </div>
 
