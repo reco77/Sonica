@@ -1,0 +1,36 @@
+image:
+  file: .gitpod.Dockerfile
+
+ports:
+  - port: 3000
+    name: Storefront
+    onOpen: open-browser
+    visibility: public
+  - port: 3001
+    name: Admin
+    onOpen: ignore
+    visibility: public
+  - port: 4000
+    name: API
+    onOpen: ignore
+    visibility: public
+  - port: 5432
+    onOpen: ignore
+  - port: 6379
+    onOpen: ignore
+  - port: 7700
+    onOpen: ignore
+
+tasks:
+  - name: Infrastructure
+    init: npm install
+    command: |
+      docker compose up -d
+      echo "⏳ Waiting for Postgres..."
+      until pg_isready -h localhost -U sonica -q 2>/dev/null; do sleep 1; done
+      echo "✅ Postgres ready"
+      npm run db:generate
+      npm run db:push
+      npm run db:seed || true
+      echo "🚀 Starting dev servers..."
+      npm run dev
